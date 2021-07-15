@@ -1,0 +1,80 @@
+name: Deploy SeaBlockMetaPack
+on:
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'     
+        required: true
+        default: 'warning'
+  push:
+    paths:
+    - 'SeaBlockMetaPack/**.json' # Triggers only if the mod info file is updated
+    branches:
+      - "main"
+jobs:
+  Setup-Reqs:
+    if: github.repository_owner == 'quickjp2'
+    runs-on: ubuntu-latest
+    outputs:
+      modVersion: ${{ steps.version.outputs.modVersion }}
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+      - run: pwd && ls -alh
+      # Create bodyFile from changelog.txt
+      - name: Create version changes file
+        run: sed -n '1,/-\{10,\}/p' ./SeaBlockMetaPack/changelog.txt | sed '/-$/d' > bodyFile.txt
+      # Create tag from changelog.txt
+      - name: Create version tag
+        id: version
+        run: echo ::set-output name=modVersion::$(grep -m 1 -i version ./SeaBlockMetaPack/changelog.txt | sed -rn 's/version.{1,2}(\d*)/\1/Ip')
+      - name: Create mod zip
+        run: zip -r SeaBlockMetaPack_${{steps.version.outputs.modVersion}}.zip ./SeaBlockMetaPack -x '*.git*'
+      # Store bodyFile
+      - name: Archive version changes file
+        uses: actions/upload-artifact@v2
+        with:
+          name: release-notes
+          path: bodyFile.txt
+          retention-days: 1
+      # Store mod zip file
+      - name: Archive version changes file
+        uses: actions/upload-artifact@v2
+        with:
+          name: mod-zip-file
+          path: SeaBlockMetaPack_${{steps.version.outputs.modVersion}}.zip
+          retention-days: 1
+
+  Deploy-Mod:
+    if: github.repository_owner == 'quickjp2'
+    runs-on: ubuntu-latest
+    needs: Setup-Reqs
+    steps:
+    # Update dates on each mod if required (Sea Block, Sea Block Pack, Landfill Painting, Circuit Processing)
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+      # Create .zip for mod
+      # Commit to GitHub and create tags
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+      - name: Download release bodyFile
+        uses: actions/download-artifact@v2
+        with:
+          name: release-notes
+      - name: Download mod zip
+        uses: actions/download-artifact@v2
+        with:
+          name: mod-zip-file
+      # Create GitHub releases
+      - name: Create Release
+        uses: ncipollo/release-action@v1.8.6
+        with:
+          allowUpdates: true
+          bodyFile: bodyFile.txt
+          commit: main
+          tag: 'SeaBlockMetaPack_${{needs.Setup-Reqs.outputs.modVersion}}'
+          token: '${{secrets.GITHUB_TOKEN}}'
+          artifacts: 'SeaBlockMetaPack_${{needs.Setup-Reqs.outputs.modVersion}}.zip'
